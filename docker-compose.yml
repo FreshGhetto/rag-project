@@ -1,0 +1,11 @@
+services:
+  rag:
+    build: .
+    container_name: rag_app
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./chroma_db:/app/chroma_db
+    tty: true
+    stdin_open: true
