@@ -1,5 +1,7 @@
 import os
 from glob import glob
+from pathlib import Path
+from typing import Iterable
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -7,31 +9,51 @@ from langchain_community.vectorstores import Chroma
 from langchain_mistralai import MistralAIEmbeddings
 
 
-def build_or_load_vectorstore(pdf_dir: str, persist_dir: str) -> Chroma:
-    """
-    Crea (se non esiste) o carica (se esiste) un Chroma vectorstore persistente.
+COLLECTION_NAME = "pdf_rag"
 
-    - pdf_dir: cartella con i PDF (nel container: /app/data)
-    - persist_dir: cartella per persistere Chroma (nel container: /app/chroma_db)
-    """
+
+def _embeddings() -> MistralAIEmbeddings:
+    return MistralAIEmbeddings(model="mistral-embed")
+
+
+def _vectorstore(persist_dir: str) -> Chroma:
+    return Chroma(
+        collection_name=COLLECTION_NAME,
+        persist_directory=persist_dir,
+        embedding_function=_embeddings(),
+    )
+
+
+def has_vectorstore(persist_dir: str) -> bool:
+    return Path(persist_dir, "chroma.sqlite3").exists()
+
+
+def load_vectorstore(persist_dir: str) -> Chroma:
+    if not has_vectorstore(persist_dir):
+        raise RuntimeError("Indice Chroma non trovato. Premi 'Indicizza PDF' prima di fare domande.")
+
+    return _vectorstore(persist_dir)
+
+
+def list_indexed_sources(persist_dir: str) -> set[str]:
+    if not has_vectorstore(persist_dir):
+        return set()
+
+    data = _vectorstore(persist_dir).get(include=["metadatas"])
+    sources = set()
+    for metadata in data.get("metadatas", []):
+        source = metadata.get("source") if metadata else None
+        if source:
+            sources.add(os.path.basename(source))
+    return sources
+
+
+def index_pdfs(pdf_paths: Iterable[str], persist_dir: str) -> Chroma:
     os.makedirs(persist_dir, exist_ok=True)
 
-    embeddings = MistralAIEmbeddings(model="mistral-embed")
-
-    # Se esiste già un DB, caricalo
-    if os.listdir(persist_dir):
-        return Chroma(
-            collection_name="pdf_rag",
-            persist_directory=persist_dir,
-            embedding_function=embeddings,
-        )
-
-    # Altrimenti ingest dei PDF
-    pdf_paths = sorted(glob(os.path.join(pdf_dir, "*.pdf")))
+    pdf_paths = sorted(str(Path(p)) for p in pdf_paths)
     if not pdf_paths:
-        raise RuntimeError(
-            f"Nessun PDF trovato in {pdf_dir}. Metti i PDF nella cartella ./data del progetto."
-        )
+        raise RuntimeError("Nessun PDF da indicizzare.")
 
     docs = []
     for p in pdf_paths:
@@ -40,12 +62,35 @@ def build_or_load_vectorstore(pdf_dir: str, persist_dir: str) -> Chroma:
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_documents(docs)
 
+    if not chunks:
+        raise RuntimeError("I PDF selezionati non contengono testo indicizzabile.")
+
+    if has_vectorstore(persist_dir):
+        vs = _vectorstore(persist_dir)
+        vs.add_documents(chunks)
+        return vs
+
     vs = Chroma.from_documents(
         documents=chunks,
-        embedding=embeddings,
-        collection_name="pdf_rag",
+        embedding=_embeddings(),
+        collection_name=COLLECTION_NAME,
         persist_directory=persist_dir,
     )
-
-
     return vs
+
+
+def build_or_load_vectorstore(pdf_dir: str, persist_dir: str) -> Chroma:
+    """
+    Compatibilita CLI: carica l'indice se esiste, altrimenti indicizza tutti i PDF.
+    La GUI usa funzioni separate per evitare indicizzazioni automatiche all'avvio.
+    """
+    if has_vectorstore(persist_dir):
+        return load_vectorstore(persist_dir)
+
+    pdf_paths = sorted(glob(os.path.join(pdf_dir, "*.pdf")))
+    if not pdf_paths:
+        raise RuntimeError(
+            f"Nessun PDF trovato in {pdf_dir}. Metti i PDF nella cartella ./data del progetto."
+        )
+
+    return index_pdfs(pdf_paths, persist_dir)

@@ -4,8 +4,9 @@ Creazione Rag
 ## Avvio facile con Docker
 
 1. Inserisci la chiave Mistral in `.env`.
-2. Metti almeno un PDF nella cartella `data`.
-3. Fai doppio click su `avvia.bat`.
+2. Fai doppio click su `avvia.bat`.
+3. Apri la pagina web, trascina i PDF nel riquadro "Aggiungi PDF" e premi "Salva PDF in data".
+4. Premi "Indicizza PDF da indicizzare".
 
 Lo script avvia il progetto con Docker Compose e apre l'interfaccia web:
 
@@ -14,6 +15,8 @@ http://localhost:8501
 ```
 
 I dati Chroma vengono mantenuti nella cartella `chroma_db`.
+
+L'indicizzazione non parte automaticamente a ogni avvio. L'app carica l'indice esistente; indicizza solo quando premi uno dei pulsanti dedicati nell'interfaccia.
 
 ## Avvio locale
 
