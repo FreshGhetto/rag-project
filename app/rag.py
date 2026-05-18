@@ -20,7 +20,12 @@ def make_rag_chain(vectorstore, model: str | None = None):
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "Sei un assistente preciso. Rispondi usando SOLO il contesto fornito. "
-         "Se la risposta non è nel contesto, dillo chiaramente."),
+         "Interpreta la domanda in modo naturale: maiuscole/minuscole non contano "
+         "e piccoli refusi o forme colloquiali vanno corretti mentalmente. "
+         "Per esempio, 'rag', 'RAG' e 'retrieval augmented generation' indicano lo stesso concetto. "
+         "Se il contesto contiene informazioni pertinenti, rispondi anche se la domanda non usa "
+         "le stesse identiche parole del testo. Se invece la risposta non è davvero nel contesto, "
+         "dillo chiaramente."),
         ("human", "Domanda: {question}\n\nContesto:\n{context}")
     ])
 
