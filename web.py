@@ -17,8 +17,14 @@ def apply_styles() -> None:
         """
         <style>
         .block-container {
-            max-width: 980px;
-            padding-top: 2rem;
+            max-width: 920px;
+            padding-top: 1.25rem;
+            padding-bottom: 6rem;
+        }
+        h1 {
+            font-size: 1.65rem !important;
+            font-weight: 650 !important;
+            margin-bottom: 0.2rem !important;
         }
         [data-testid="stSidebar"] {
             border-right: 1px solid rgba(128, 128, 128, 0.18);
@@ -40,6 +46,41 @@ def apply_styles() -> None:
         .doc-status {
             color: #8b949e;
             font-size: 0.76rem;
+        }
+        .chat-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .chat-title h1 {
+            margin: 0 !important;
+        }
+        .chat-meta {
+            color: #8b949e;
+            font-size: 0.86rem;
+        }
+        .empty-state {
+            min-height: 45vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+            color: #8b949e;
+        }
+        .empty-state strong {
+            color: inherit;
+            font-size: 1.05rem;
+            font-weight: 500;
+        }
+        [data-testid="stChatMessage"] {
+            background: transparent;
+            padding: 0.65rem 0;
+        }
+        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
+            font-size: 1rem;
+            line-height: 1.55;
         }
         </style>
         """,
@@ -117,7 +158,7 @@ def main() -> None:
     pending_pdfs = [pdf for pdf in pdfs if pdf.name not in indexed_sources]
 
     with st.sidebar:
-        st.title("RAG")
+        st.markdown("### RAG")
         st.divider()
 
         st.subheader("Modello")
@@ -194,12 +235,12 @@ def main() -> None:
         st.stop()
 
     if not pdfs:
-        st.title("RAG")
+        st.markdown("### RAG")
         st.warning("Aggiungi almeno un PDF dalla barra laterale.")
         st.stop()
 
     if not has_vectorstore(str(chroma_dir)):
-        st.title("RAG")
+        st.markdown("### RAG")
         st.warning("Indice non ancora creato. Usa la sezione Documenti nella barra laterale.")
         st.stop()
 
@@ -212,10 +253,26 @@ def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    st.title("RAG")
+    st.markdown(
+        f"""
+        <div class="chat-title">
+            <h1>RAG</h1>
+            <span class="chat-meta">{model_label} · {len(indexed_pdfs)} PDF indicizzati</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not st.session_state.messages:
-        st.caption("Fai una domanda sui documenti indicizzati.")
+        st.markdown(
+            """
+            <div class="empty-state">
+                <strong>Fai una domanda sui documenti indicizzati</strong>
+                <span>Le risposte usano solo il contenuto dei PDF presenti nell'indice.</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
