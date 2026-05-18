@@ -3,6 +3,7 @@ from glob import glob
 from pathlib import Path
 from typing import Iterable
 
+from pypdf.errors import DependencyError, PdfReadError
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -57,7 +58,17 @@ def index_pdfs(pdf_paths: Iterable[str], persist_dir: str) -> Chroma:
 
     docs = []
     for p in pdf_paths:
-        docs.extend(PyPDFLoader(p).load())
+        try:
+            docs.extend(PyPDFLoader(p).load())
+        except DependencyError as exc:
+            raise RuntimeError(
+                f"Impossibile leggere '{Path(p).name}': PDF cifrato. "
+                "Installa la dipendenza cryptography e riprova."
+            ) from exc
+        except PdfReadError as exc:
+            raise RuntimeError(
+                f"Impossibile leggere '{Path(p).name}': PDF protetto, corrotto o non supportato."
+            ) from exc
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_documents(docs)
