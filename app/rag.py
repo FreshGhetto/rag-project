@@ -32,9 +32,14 @@ def make_rag_chain(vectorstore, model: str | None = None):
     model = model or os.getenv("MISTRAL_MODEL", "mistral-small-latest")
     llm = ChatMistralAI(model=model, temperature=0)
 
-    return (
-        {"context": retriever | _format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+    answer_chain = prompt | llm | StrOutputParser()
+
+    def answer_with_sources(question: str) -> dict:
+        docs = retriever.invoke(question)
+        answer = answer_chain.invoke({
+            "context": _format_docs(docs),
+            "question": question,
+        })
+        return {"answer": answer, "sources": docs}
+
+    return RunnablePassthrough() | answer_with_sources

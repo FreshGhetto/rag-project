@@ -171,6 +171,28 @@ def ask_with_retry(rag, question: str, attempts: int = 2) -> str:
     return "Errore durante la generazione della risposta. Riprova tra poco."
 
 
+def format_sources(docs) -> list[str]:
+    sources = []
+    seen = set()
+    for doc in docs:
+        source = Path(doc.metadata.get("source", "sconosciuto")).name
+        page = doc.metadata.get("page", "?")
+        label = f"{source}, pagina {page}"
+        if label not in seen:
+            seen.add(label)
+            sources.append(label)
+    return sources
+
+
+def render_assistant_message(message: dict) -> None:
+    st.write(message["content"])
+    sources = message.get("sources") or []
+    if sources:
+        with st.expander("Fonti", expanded=False):
+            for source in sources:
+                st.write(source)
+
+
 def main() -> None:
     load_dotenv()
 
@@ -318,7 +340,10 @@ def main() -> None:
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.write(message["content"])
+            if message["role"] == "assistant":
+                render_assistant_message(message)
+            else:
+                st.write(message["content"])
 
     question = st.chat_input("Scrivi una domanda sui PDF")
     if question:
@@ -328,10 +353,20 @@ def main() -> None:
 
         with st.chat_message("assistant"):
             with st.spinner("Generazione della risposta..."):
-                answer = ask_with_retry(rag, question)
-            st.write(answer)
+                result = ask_with_retry(rag, question)
+            if isinstance(result, dict):
+                answer = result["answer"]
+                sources = format_sources(result.get("sources", []))
+            else:
+                answer = result
+                sources = []
+            render_assistant_message({"content": answer, "sources": sources})
 
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+            "sources": sources,
+        })
 
 
 if __name__ == "__main__":
