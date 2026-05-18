@@ -2,6 +2,7 @@ import os
 import time
 from pathlib import Path
 
+import httpx
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -127,6 +128,34 @@ def save_uploaded_pdfs(uploaded_files, pdf_dir: Path) -> list[Path]:
         target.write_bytes(uploaded_file.getbuffer())
         saved.append(target)
     return saved
+
+
+def ask_with_retry(rag, question: str, attempts: int = 2) -> str:
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            return rag.invoke(question)
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            status_code = exc.response.status_code
+            if status_code not in {429, 500, 502, 503, 504} or attempt == attempts - 1:
+                break
+            time.sleep(1.5)
+
+    if isinstance(last_error, httpx.HTTPStatusError):
+        status_code = last_error.response.status_code
+        if status_code == 504:
+            return (
+                "Il servizio Mistral non ha risposto in tempo. "
+                "Riprova tra qualche secondo oppure seleziona Small se stavi usando un modello piu pesante."
+            )
+        if status_code == 429:
+            return "Limite di richieste raggiunto su Mistral. Aspetta qualche secondo e riprova."
+        if status_code in {500, 502, 503}:
+            return "Il servizio Mistral e temporaneamente non disponibile. Riprova tra poco."
+        return f"Errore Mistral HTTP {status_code}. Controlla modello e chiave API."
+
+    return "Errore durante la generazione della risposta. Riprova tra poco."
 
 
 def main() -> None:
@@ -286,7 +315,7 @@ def main() -> None:
 
         with st.chat_message("assistant"):
             with st.spinner("Generazione della risposta..."):
-                answer = rag.invoke(question)
+                answer = ask_with_retry(rag, question)
             st.write(answer)
 
         st.session_state.messages.append({"role": "assistant", "content": answer})
