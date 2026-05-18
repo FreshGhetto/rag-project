@@ -1,3 +1,5 @@
+import os
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -6,7 +8,8 @@ from langchain_mistralai import ChatMistralAI
 
 def _format_docs(docs) -> str:
     return "\n\n".join(
-        f"[Pagina {d.metadata.get('page', '?')}] {d.page_content}"
+        f"[Documento: {os.path.basename(d.metadata.get('source', 'sconosciuto'))} "
+        f"- pagina {d.metadata.get('page', '?')}] {d.page_content}"
         for d in docs
     )
 
@@ -21,7 +24,8 @@ def make_rag_chain(vectorstore):
         ("human", "Domanda: {question}\n\nContesto:\n{context}")
     ])
 
-    llm = ChatMistralAI(model="mistral-large-latest", temperature=0)
+    model = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+    llm = ChatMistralAI(model=model, temperature=0)
 
     return (
         {"context": retriever | _format_docs, "question": RunnablePassthrough()}
