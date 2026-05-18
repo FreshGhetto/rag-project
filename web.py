@@ -144,13 +144,26 @@ def ask_with_retry(rag, question: str, attempts: int = 2) -> str:
 
     if isinstance(last_error, httpx.HTTPStatusError):
         status_code = last_error.response.status_code
+        error_text = last_error.response.text.lower()
+        if status_code == 400:
+            return "Richiesta non valida verso Mistral. Di solito dipende da input troppo lungo o modello non compatibile."
+        if status_code == 401:
+            return "Chiave Mistral non valida o mancante. Controlla MISTRAL_API_KEY nel file .env."
+        if status_code == 403:
+            return "Accesso negato da Mistral. La chiave API non ha permessi per questo modello o account."
+        if status_code == 404:
+            return "Modello Mistral non trovato. Prova a selezionare Small oppure controlla il nome del modello."
+        if status_code == 413:
+            return "Domanda o contesto troppo grandi per il modello. Prova una domanda piu specifica o riduci i PDF indicizzati."
         if status_code == 504:
             return (
                 "Il servizio Mistral non ha risposto in tempo. "
                 "Riprova tra qualche secondo oppure seleziona Small se stavi usando un modello piu pesante."
             )
         if status_code == 429:
-            return "Limite di richieste raggiunto su Mistral. Aspetta qualche secondo e riprova."
+            if any(term in error_text for term in ["quota", "credit", "billing", "balance"]):
+                return "Quota o credito Mistral esaurito. Controlla billing/crediti nell'account Mistral."
+            return "Rate limit Mistral raggiunto: troppe richieste in poco tempo. Aspetta qualche secondo e riprova."
         if status_code in {500, 502, 503}:
             return "Il servizio Mistral e temporaneamente non disponibile. Riprova tra poco."
         return f"Errore Mistral HTTP {status_code}. Controlla modello e chiave API."
