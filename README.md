@@ -1,12 +1,12 @@
-# Rag_scuola
-Creazione Rag
+# RAG
+Creazione RAG
 
 ## Avvio facile con Docker
 
 1. Inserisci la chiave Mistral in `.env`.
 2. Fai doppio click su `avvia.bat`.
 3. Apri la pagina web, trascina i PDF nel riquadro "Aggiungi PDF" e premi "Salva PDF in data".
-4. Premi "Indicizza PDF da indicizzare".
+4. Seleziona i nuovi PDF da indicizzare e premi "Indicizza PDF selezionati".
 
 Lo script avvia il progetto con Docker Compose e apre l'interfaccia web:
 
@@ -17,6 +17,12 @@ http://localhost:8501
 I dati Chroma vengono mantenuti nella cartella `chroma_db`.
 
 L'indicizzazione non parte automaticamente a ogni avvio. L'app carica l'indice esistente; indicizza solo quando premi uno dei pulsanti dedicati nell'interfaccia.
+
+L'interfaccia permette anche di scegliere il modello Small, Medium o Large. L'indice dei PDF resta lo stesso; cambia il modello usato per generare la risposta:
+
+- Small: piu veloce ed economico, adatto a domande semplici.
+- Medium: compromesso tra qualita e costo.
+- Large: piu accurato su ragionamenti o risposte complesse, ma piu costoso.
 
 ## Avvio locale
 

@@ -14,7 +14,7 @@ def _format_docs(docs) -> str:
     )
 
 
-def make_rag_chain(vectorstore):
+def make_rag_chain(vectorstore, model: str | None = None):
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     prompt = ChatPromptTemplate.from_messages([
@@ -24,7 +24,7 @@ def make_rag_chain(vectorstore):
         ("human", "Domanda: {question}\n\nContesto:\n{context}")
     ])
 
-    model = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+    model = model or os.getenv("MISTRAL_MODEL", "mistral-small-latest")
     llm = ChatMistralAI(model=model, temperature=0)
 
     return (

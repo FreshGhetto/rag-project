@@ -31,9 +31,9 @@ def get_active_index_dir(chroma_root: Path) -> Path:
 
 
 @st.cache_resource(show_spinner="Caricamento dell'indice...")
-def load_chain(chroma_dir: str):
+def load_chain(chroma_dir: str, model: str):
     vectorstore = load_vectorstore(chroma_dir)
-    return make_rag_chain(vectorstore)
+    return make_rag_chain(vectorstore, model=model)
 
 
 def create_new_index(chroma_root: Path) -> Path:
@@ -56,8 +56,8 @@ def save_uploaded_pdfs(uploaded_files, pdf_dir: Path) -> list[Path]:
 def main() -> None:
     load_dotenv()
 
-    st.set_page_config(page_title="RAG Scuola", page_icon="📚", layout="wide")
-    st.title("RAG Scuola")
+    st.set_page_config(page_title="RAG", page_icon="📚", layout="wide")
+    st.title("RAG")
 
     pdf_dir, chroma_root = get_paths()
     pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,16 @@ def main() -> None:
     chroma_dir.mkdir(parents=True, exist_ok=True)
 
     api_key = os.getenv("MISTRAL_API_KEY", "").strip()
-    model = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+    model_options = {
+        "Small": "mistral-small-latest",
+        "Medium": "mistral-medium-latest",
+        "Large": "mistral-large-latest",
+    }
+    default_model = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+    default_label = next(
+        (label for label, value in model_options.items() if value == default_model),
+        "Small",
+    )
     pdfs = sorted(pdf_dir.glob("*.pdf"))
     indexed_sources = list_indexed_sources(str(chroma_dir))
     indexed_pdfs = [pdf for pdf in pdfs if pdf.name in indexed_sources]
@@ -74,7 +83,13 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("Configurazione")
-        st.write(f"Modello: `{model}`")
+        model_label = st.selectbox(
+            "Modello",
+            options=list(model_options.keys()),
+            index=list(model_options.keys()).index(default_label),
+        )
+        model = model_options[model_label]
+        st.caption(f"ID modello: `{model}`")
         st.write(f"PDF trovati: `{len(pdfs)}`")
         st.write(f"PDF indicizzati: `{len(indexed_pdfs)}`")
         st.write(f"PDF da indicizzare: `{len(pending_pdfs)}`")
@@ -105,14 +120,22 @@ def main() -> None:
         st.warning("Aggiungi almeno un PDF usando il riquadro qui sopra.")
         st.stop()
 
+    selected_pending = st.multiselect(
+        "PDF da aggiungere all'indice",
+        options=[pdf.name for pdf in pending_pdfs],
+        default=[pdf.name for pdf in pending_pdfs],
+        help="Seleziona solo i nuovi documenti che vuoi indicizzare adesso.",
+    )
+    selected_pending_paths = [pdf for pdf in pending_pdfs if pdf.name in selected_pending]
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Indicizza PDF da indicizzare", type="primary", use_container_width=True):
-            if not pending_pdfs:
-                st.info("Non ci sono nuovi PDF da indicizzare.")
+        if st.button("Indicizza PDF selezionati", type="primary", use_container_width=True):
+            if not selected_pending_paths:
+                st.info("Seleziona almeno un PDF non ancora indicizzato.")
             else:
-                with st.spinner("Indicizzazione dei PDF nuovi..."):
-                    index_pdfs([str(pdf) for pdf in pending_pdfs], str(chroma_dir))
+                with st.spinner("Indicizzazione dei PDF selezionati..."):
+                    index_pdfs([str(pdf) for pdf in selected_pending_paths], str(chroma_dir))
                 st.cache_resource.clear()
                 st.success("Indicizzazione completata.")
                 st.rerun()
@@ -131,7 +154,7 @@ def main() -> None:
         st.stop()
 
     try:
-        rag = load_chain(str(chroma_dir))
+        rag = load_chain(str(chroma_dir), model)
     except Exception as exc:
         st.error(str(exc))
         st.stop()
