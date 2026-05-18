@@ -12,6 +12,41 @@ from app.rag import make_rag_chain
 BASE_DIR = Path(__file__).resolve().parent
 
 
+def apply_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 980px;
+            padding-top: 2rem;
+        }
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(128, 128, 128, 0.18);
+        }
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            gap: 0.75rem;
+        }
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            padding-top: 0.25rem;
+        }
+        .doc-row {
+            border: 1px solid rgba(128, 128, 128, 0.22);
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            margin-bottom: 0.35rem;
+            font-size: 0.88rem;
+        }
+        .doc-status {
+            color: #8b949e;
+            font-size: 0.76rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def get_paths() -> tuple[Path, Path]:
     pdf_dir = Path(os.getenv("PDF_DIR", BASE_DIR / "data"))
     chroma_root = Path(os.getenv("CHROMA_DIR", BASE_DIR / "chroma_db"))
@@ -57,7 +92,7 @@ def main() -> None:
     load_dotenv()
 
     st.set_page_config(page_title="RAG", page_icon="📚", layout="wide")
-    st.title("RAG")
+    apply_styles()
 
     pdf_dir, chroma_root = get_paths()
     pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -82,75 +117,90 @@ def main() -> None:
     pending_pdfs = [pdf for pdf in pdfs if pdf.name not in indexed_sources]
 
     with st.sidebar:
-        st.subheader("Configurazione")
+        st.title("RAG")
+        st.divider()
+
+        st.subheader("Modello")
         model_label = st.selectbox(
             "Modello",
             options=list(model_options.keys()),
             index=list(model_options.keys()).index(default_label),
+            label_visibility="collapsed",
         )
         model = model_options[model_label]
         st.caption(f"ID modello: `{model}`")
-        st.write(f"PDF trovati: `{len(pdfs)}`")
-        st.write(f"PDF indicizzati: `{len(indexed_pdfs)}`")
-        st.write(f"PDF da indicizzare: `{len(pending_pdfs)}`")
+
+        st.divider()
+        st.subheader("Documenti")
+        st.caption(
+            f"{len(pdfs)} PDF totali · {len(indexed_pdfs)} indicizzati · "
+            f"{len(pending_pdfs)} da indicizzare"
+        )
+
+        uploaded_files = st.file_uploader(
+            "Aggiungi PDF",
+            type=["pdf"],
+            accept_multiple_files=True,
+            help="Trascina qui i PDF oppure selezionali dal computer. I file vengono copiati nella cartella data.",
+        )
+
+        if uploaded_files and st.button("Salva in data", use_container_width=True):
+            saved = save_uploaded_pdfs(uploaded_files, pdf_dir)
+            st.success(f"PDF salvati: {len(saved)}")
+            st.rerun()
+
+        selected_pending = st.multiselect(
+            "PDF da indicizzare",
+            options=[pdf.name for pdf in pending_pdfs],
+            default=[pdf.name for pdf in pending_pdfs],
+            help="Seleziona solo i nuovi documenti che vuoi indicizzare adesso.",
+        )
+        selected_pending_paths = [pdf for pdf in pending_pdfs if pdf.name in selected_pending]
+
+        if st.button("Indicizza selezionati", type="primary", use_container_width=True):
+            if not selected_pending_paths:
+                st.info("Seleziona almeno un PDF non ancora indicizzato.")
+            else:
+                with st.spinner("Indicizzazione..."):
+                    index_pdfs([str(pdf) for pdf in selected_pending_paths], str(chroma_dir))
+                st.cache_resource.clear()
+                st.success("Indicizzazione completata.")
+                st.rerun()
+
+        if st.button("Ricostruisci indice", use_container_width=True):
+            new_index_dir = create_new_index(chroma_root)
+            with st.spinner("Ricostruzione..."):
+                index_pdfs([str(pdf) for pdf in pdfs], str(new_index_dir))
+            st.cache_resource.clear()
+            st.success("Indice ricostruito.")
+            st.rerun()
 
         if pdfs:
-            st.caption("Documenti")
-            for pdf in pdfs:
-                status = "indicizzato" if pdf.name in indexed_sources else "da indicizzare"
-                st.write(f"{pdf.name} - {status}")
-
-    uploaded_files = st.file_uploader(
-        "Aggiungi PDF",
-        type=["pdf"],
-        accept_multiple_files=True,
-        help="Trascina qui i PDF oppure selezionali dal computer. I file vengono copiati nella cartella data.",
-    )
-
-    if uploaded_files and st.button("Salva PDF in data", use_container_width=True):
-        saved = save_uploaded_pdfs(uploaded_files, pdf_dir)
-        st.success(f"PDF salvati: {len(saved)}")
-        st.rerun()
+            with st.expander("Elenco PDF", expanded=False):
+                for pdf in pdfs:
+                    status = "indicizzato" if pdf.name in indexed_sources else "da indicizzare"
+                    st.markdown(
+                        f"""
+                        <div class="doc-row">
+                            {pdf.name}<br>
+                            <span class="doc-status">{status}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
     if not api_key:
         st.error("MISTRAL_API_KEY manca nel file .env.")
         st.stop()
 
     if not pdfs:
-        st.warning("Aggiungi almeno un PDF usando il riquadro qui sopra.")
+        st.title("RAG")
+        st.warning("Aggiungi almeno un PDF dalla barra laterale.")
         st.stop()
 
-    selected_pending = st.multiselect(
-        "PDF da aggiungere all'indice",
-        options=[pdf.name for pdf in pending_pdfs],
-        default=[pdf.name for pdf in pending_pdfs],
-        help="Seleziona solo i nuovi documenti che vuoi indicizzare adesso.",
-    )
-    selected_pending_paths = [pdf for pdf in pending_pdfs if pdf.name in selected_pending]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Indicizza PDF selezionati", type="primary", use_container_width=True):
-            if not selected_pending_paths:
-                st.info("Seleziona almeno un PDF non ancora indicizzato.")
-            else:
-                with st.spinner("Indicizzazione dei PDF selezionati..."):
-                    index_pdfs([str(pdf) for pdf in selected_pending_paths], str(chroma_dir))
-                st.cache_resource.clear()
-                st.success("Indicizzazione completata.")
-                st.rerun()
-
-    with col2:
-        if st.button("Ricostruisci tutto l'indice", use_container_width=True):
-            new_index_dir = create_new_index(chroma_root)
-            with st.spinner("Ricostruzione completa dell'indice..."):
-                index_pdfs([str(pdf) for pdf in pdfs], str(new_index_dir))
-            st.cache_resource.clear()
-            st.success("Indice ricostruito.")
-            st.rerun()
-
     if not has_vectorstore(str(chroma_dir)):
-        st.warning("Indice non ancora creato. Premi 'Indicizza PDF da indicizzare' per iniziare.")
+        st.title("RAG")
+        st.warning("Indice non ancora creato. Usa la sezione Documenti nella barra laterale.")
         st.stop()
 
     try:
@@ -159,18 +209,30 @@ def main() -> None:
         st.error(str(exc))
         st.stop()
 
-    question = st.text_area("Domanda", height=110, placeholder="Scrivi una domanda sui PDF...")
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    if st.button("Chiedi", type="primary", use_container_width=True):
-        if not question.strip():
-            st.warning("Scrivi una domanda prima di inviare.")
-            st.stop()
+    st.title("RAG")
 
-        with st.spinner("Generazione della risposta..."):
-            answer = rag.invoke(question.strip())
+    if not st.session_state.messages:
+        st.caption("Fai una domanda sui documenti indicizzati.")
 
-        st.subheader("Risposta")
-        st.write(answer)
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    question = st.chat_input("Scrivi una domanda sui PDF")
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.write(question)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Generazione della risposta..."):
+                answer = rag.invoke(question)
+            st.write(answer)
+
+        st.session_state.messages.append({"role": "assistant", "content": answer})
 
 
 if __name__ == "__main__":
